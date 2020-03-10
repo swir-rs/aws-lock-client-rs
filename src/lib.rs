@@ -90,7 +90,7 @@ impl Default for LockDescription{
 	    lock_last_updated:Some(current_time_milliseconds()),
 	    lock_lease_duration:Some(5000),
 	    lock_released:Some(false),
-	    lock_data:Some("0000000".to_string())
+	    lock_data:Some("    ".to_string())
 	}	
     }
 }
@@ -218,6 +218,8 @@ impl AwsLockClientDynamoDb {
 	    .. Default::default()			
 	};
 
+	
+
 	let mut expression_attribute_values= HashMap::new();
 	
 	expression_attribute_values.insert(":lock_id".to_string(),lock_id_attr);
@@ -227,12 +229,14 @@ impl AwsLockClientDynamoDb {
 	expression_attribute_values.insert(":lock_lease_duration".to_string(),lock_lease_duration_attr);
 	expression_attribute_values.insert(":lock_last_updated".to_string(),lock_last_updated_attr);
 	expression_attribute_values.insert(":lock_data".to_string(),data_attr);
+
 	
 	
 	let condition_expression;
 	if is_new{
-	    condition_expression = String::from("attribute_not_exists(lock_id)");	    
+	    condition_expression = String::from("attribute_not_exists(lock_id)");
 	}else{
+	
 	    let old_lock_id_attr = rusoto_dynamodb::AttributeValue{
 		s:old_lock.lock_id.map(|o| o.to_string()),
 		.. Default::default()			
