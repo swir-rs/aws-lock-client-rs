@@ -1,4 +1,4 @@
-#[macro_use]
+g#[macro_use]
 extern crate log;
 
 use rusoto_dynamodb;
@@ -16,8 +16,9 @@ const LOCK_ADDITIONAL_HOLD_TIME: u32 = 500;
 #[async_trait]
 pub trait AwsLockClient {
     async fn acquire_lock(&self)->Result<(),()>;
-    async fn try_acquire_lock(&self,key:String,  duration: Duration, data:String )->Result<LockDescription,()>;
+    async fn try_acquire_lock(&self,key:String,  duration: Duration)->Result<LockDescription,()>;
     async fn release_lock(&self,key:String, lock:LockDescription)->Result<LockDescription,LockDescription>;
+    async fn update_lock(&self,key:String, lock:LockDescription)->Result<LockDescription,LockDescription>;
     async fn expires_in(&self,key:String)->Option<u128>;
 }
 trait Empty {
@@ -89,7 +90,7 @@ impl Default for LockDescription{
 	    lock_last_updated:Some(current_time_milliseconds()),
 	    lock_lease_duration:Some(5000),
 	    lock_released:Some(false),
-	    lock_data:None
+	    lock_data:Some("blash".to_string())
 	}	
     }
 }
@@ -155,9 +156,10 @@ impl AwsLockClientDynamoDb {
 	};
 
 	let get_item_output = client.get_item(get_item_input).await;
-	info!("get_lock => {:?}",get_item_output);	
+
 	match get_item_output{
-	    Ok(get_item_output)=>{	
+	    Ok(get_item_output)=>{
+		debug!("get_lock => {:?}",get_item_output);	
 		match get_item_output.item{
 		    Some(item)=>{
 			Some(LockDescription::from(item))			     
@@ -174,7 +176,7 @@ impl AwsLockClientDynamoDb {
 
     
     
-    async fn create_or_update_lock(&self, key:HashMap<String,rusoto_dynamodb::AttributeValue>,lock: LockDescription,is_new:bool, old_lock:LockDescription,)->Result<(),()>{
+    async fn create_or_update_lock(&self, key:HashMap<String,rusoto_dynamodb::AttributeValue>,lock: LockDescription,is_new:bool, old_lock:LockDescription)->Result<(),()>{
 	let client = &self.client;
 	let table_name = &self.table_name;
 
@@ -184,21 +186,11 @@ impl AwsLockClientDynamoDb {
 	    .. Default::default()			
 	};
 
-	let old_lock_id_attr = rusoto_dynamodb::AttributeValue{
-	    s:old_lock.lock_id.clone(),
-	    .. Default::default()			
-	};
 	
 	let lock_owner_attr = rusoto_dynamodb::AttributeValue{
 	    s:lock.lock_owner.clone(),
 	    .. Default::default()			
 	};
-
-	let old_lock_owner_attr = rusoto_dynamodb::AttributeValue{
-	    s:old_lock.lock_owner.clone(),
-	    .. Default::default()			
-	};
-
 	
 	let lock_created_attr = rusoto_dynamodb::AttributeValue{
 	    n:lock.lock_created.map(|o| o.to_string()),
@@ -221,15 +213,16 @@ impl AwsLockClientDynamoDb {
 	    .. Default::default()			
 	};
 
-	let old_lock_last_updated_attr = rusoto_dynamodb::AttributeValue{
-	    n:old_lock.lock_last_updated.map(|o| o.to_string()),
-	    .. Default::default()			
-	};
-
 	let data_attr = rusoto_dynamodb::AttributeValue{
 	    s:lock.lock_data.map(|o| o.to_string()),
 	    .. Default::default()			
 	};
+
+
+	
+
+
+	
 
 	let mut expression_attribute_values= HashMap::new();
 	
@@ -246,10 +239,26 @@ impl AwsLockClientDynamoDb {
 	if is_new{
 	    condition_expression = String::from("attribute_not_exists(lock_id)");	    
 	}else{
-	    condition_expression = String::from("lock_id=:old_lock_id AND lock_owner=:old_lock_owner AND lock_last_updated=:old_lock_last_updated");
+	    let old_lock_id_attr = rusoto_dynamodb::AttributeValue{
+		s:old_lock.lock_id.map(|o| o.to_string()),
+		.. Default::default()			
+	    };
+
+	    let old_lock_owner_attr = rusoto_dynamodb::AttributeValue{
+		s:old_lock.lock_owner.clone(),
+		.. Default::default()			
+	    };
+	    
+	    let old_lock_released_attr = rusoto_dynamodb::AttributeValue{
+		bool:old_lock.lock_released,
+		.. Default::default()			
+	    };
+
+	    
+	    condition_expression = String::from("lock_id=:old_lock_id AND lock_owner=:old_lock_owner AND lock_released = :old_lock_released");
 	    expression_attribute_values.insert(":old_lock_owner".to_string(),old_lock_owner_attr);
 	    expression_attribute_values.insert(":old_lock_id".to_string(),old_lock_id_attr);
-	    expression_attribute_values.insert(":old_lock_last_updated".to_string(),old_lock_last_updated_attr);
+	    expression_attribute_values.insert(":old_lock_released".to_string(),old_lock_released_attr);
 	};
 	
 	let update_item_input = rusoto_dynamodb::UpdateItemInput{
@@ -263,7 +272,7 @@ impl AwsLockClientDynamoDb {
 	};	
 	
 	let update_item_output = client.update_item(update_item_input).await;
-	info!("create_or_update_lock {} => {:?}",is_new,update_item_output);
+	debug!("create_or_update_lock {} => {:?}",is_new,update_item_output);
 	match update_item_output{
 	    Ok(_) =>{
 		
@@ -288,13 +297,11 @@ impl AwsLockClientDynamoDb {
 
 #[async_trait]
 impl AwsLockClient for AwsLockClientDynamoDb{
-    async fn try_acquire_lock(&self,key:String, duration: Duration, data: String)->Result<LockDescription,()>{
+    async fn try_acquire_lock(&self,key:String, duration: Duration)->Result<LockDescription,()>{
 	let key = self.get_partition_key(key);	
 	let lock = self.get_lock(key.clone()).await;
 	let mut new_lock = LockDescription::default();
 	new_lock.lock_lease_duration = Some(duration.as_millis());
-	new_lock.lock_data = Some(data);
-
 	    
 	match lock{	    
 	    Some(lock)=>{
@@ -304,7 +311,7 @@ impl AwsLockClient for AwsLockClientDynamoDb{
 		if lock.check_lock_expired(){
 		    match self.update_lock(key, new_lock.clone(),lock).await{
 			Ok(_)=> {
-			    debug!("try_acquire_lock successfully locked {:?}",new_lock);
+			    info!("try_acquire_lock => successfully locked {:?}",new_lock);
 			    Ok(new_lock)
 			},
 			Err(_)=> Err(())
@@ -315,10 +322,9 @@ impl AwsLockClient for AwsLockClientDynamoDb{
 		}
 	    },
 	    None=>{
-		let new_lock = LockDescription::default();		    
 		match self.put_new_lock(key, new_lock.clone()).await{
 		    Ok(_)=> {
-			debug!("try_acquire_lock successfully locked {:?}",new_lock);
+			info!("try_acquire_lock => successfully locked {:?}",new_lock);
 			Ok(new_lock)
 		    },
 		    Err(_)=> Err(())
@@ -331,10 +337,14 @@ impl AwsLockClient for AwsLockClientDynamoDb{
 	Ok(())
     }
     async fn release_lock(&self,key: String, lock:LockDescription)->Result<LockDescription,LockDescription>{
+	if lock.lock_released.unwrap(){
+	    return Err(lock)
+	}
 	let key = self.get_partition_key(key);	
 	let mut current_lock = lock.clone();
 	current_lock.lock_released = Some(true);
 	current_lock.lock_last_updated=Some(current_time_milliseconds());
+	current_lock.lock_lease_duration=Some(0);
 	match self.update_lock(key, current_lock.clone(), lock.clone()).await{
 	    Ok(_)=> {
 		info!("release_lock => Lock released {:?}",current_lock);		
@@ -342,6 +352,26 @@ impl AwsLockClient for AwsLockClientDynamoDb{
 	    },
 	    Err(_)=> {
 		info!("release_lock => Unable to release lock {:?}",current_lock);
+		Err(current_lock)
+	    }
+	}		    	  	
+    }
+
+    async fn update_lock(&self,key: String, lock:LockDescription)->Result<LockDescription,LockDescription>{
+	let key = self.get_partition_key(key);
+	if lock.lock_released.unwrap(){
+	    return Err(lock)
+	}
+	let mut current_lock = lock.clone();
+	
+	current_lock.lock_last_updated=Some(current_time_milliseconds());
+	match self.update_lock(key, current_lock.clone(), lock.clone()).await{
+	    Ok(_)=> {
+		info!("update_lock => Update lock {:?}",current_lock);		
+		Ok(current_lock)		    
+	    },
+	    Err(_)=> {
+		info!("update_lock => Unable to update lock {:?}",current_lock);
 		Err(current_lock)
 	    }
 	}		    	  	
