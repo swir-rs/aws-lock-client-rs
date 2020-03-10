@@ -1,4 +1,4 @@
-g#[macro_use]
+#[macro_use]
 extern crate log;
 
 use rusoto_dynamodb;
