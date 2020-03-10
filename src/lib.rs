@@ -42,7 +42,7 @@ impl LockDescription{
 	let lease_duration = self.lock_lease_duration.unwrap_or(0);
 	let released = self.lock_released.unwrap_or(false);
 	let lock_expired_time= created + lease_duration + u128::from(LOCK_ADDITIONAL_HOLD_TIME);
-	debug!("{} {}",lock_expired_time,current_time_milliseconds());
+	trace!("{} {}",lock_expired_time,current_time_milliseconds());
 	if lock_expired_time < current_time_milliseconds(){
 	    true
 	}else{
@@ -90,7 +90,7 @@ impl Default for LockDescription{
 	    lock_last_updated:Some(current_time_milliseconds()),
 	    lock_lease_duration:Some(5000),
 	    lock_released:Some(false),
-	    lock_data:Some("blash".to_string())
+	    lock_data:Some("".to_string())
 	}	
     }
 }
@@ -159,7 +159,7 @@ impl AwsLockClientDynamoDb {
 
 	match get_item_output{
 	    Ok(get_item_output)=>{
-		debug!("get_lock => {:?}",get_item_output);	
+		trace!("get_lock => {:?}",get_item_output);	
 		match get_item_output.item{
 		    Some(item)=>{
 			Some(LockDescription::from(item))			     
@@ -272,7 +272,7 @@ impl AwsLockClientDynamoDb {
 	};	
 	
 	let update_item_output = client.update_item(update_item_input).await;
-	debug!("create_or_update_lock {} => {:?}",is_new,update_item_output);
+	trace!("create_or_update_lock {} => {:?}",is_new,update_item_output);
 	match update_item_output{
 	    Ok(_) =>{
 		
@@ -311,20 +311,20 @@ impl AwsLockClient for AwsLockClientDynamoDb{
 		if lock.check_lock_expired(){
 		    match self.update_lock(key, new_lock.clone(),lock).await{
 			Ok(_)=> {
-			    info!("try_acquire_lock => successfully locked {:?}",new_lock);
+			    debug!("try_acquire_lock => successfully locked {:?}",new_lock);
 			    Ok(new_lock)
 			},
 			Err(_)=> Err(())
 		    }		    
 		}else{
-		    debug!("Lock expires in {:?}",lock.expires_in());
+		    trace!("Lock expires in {:?}",lock.expires_in());
 		    Err(())
 		}
 	    },
 	    None=>{
 		match self.put_new_lock(key, new_lock.clone()).await{
 		    Ok(_)=> {
-			info!("try_acquire_lock => successfully locked {:?}",new_lock);
+			debug!("try_acquire_lock => successfully locked {:?}",new_lock);
 			Ok(new_lock)
 		    },
 		    Err(_)=> Err(())
@@ -347,11 +347,11 @@ impl AwsLockClient for AwsLockClientDynamoDb{
 	current_lock.lock_lease_duration=Some(0);
 	match self.update_lock(key, current_lock.clone(), lock.clone()).await{
 	    Ok(_)=> {
-		info!("release_lock => Lock released {:?}",current_lock);		
+		debug!("release_lock => Lock released {:?}",current_lock);		
 		Ok(current_lock)		    
 	    },
 	    Err(_)=> {
-		info!("release_lock => Unable to release lock {:?}",current_lock);
+		debug!("release_lock => Unable to release lock {:?}",current_lock);
 		Err(current_lock)
 	    }
 	}		    	  	
@@ -367,11 +367,11 @@ impl AwsLockClient for AwsLockClientDynamoDb{
 	current_lock.lock_last_updated=Some(current_time_milliseconds());
 	match self.update_lock(key, current_lock.clone(), lock.clone()).await{
 	    Ok(_)=> {
-		info!("update_lock => Update lock {:?}",current_lock);		
+		debug!("update_lock => Update lock {:?}",current_lock);		
 		Ok(current_lock)		    
 	    },
 	    Err(_)=> {
-		info!("update_lock => Unable to update lock {:?}",current_lock);
+		debug!("update_lock => Unable to update lock {:?}",current_lock);
 		Err(current_lock)
 	    }
 	}		    	  	
