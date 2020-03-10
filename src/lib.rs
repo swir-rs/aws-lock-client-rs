@@ -90,7 +90,7 @@ impl Default for LockDescription{
 	    lock_last_updated:Some(current_time_milliseconds()),
 	    lock_lease_duration:Some(5000),
 	    lock_released:Some(false),
-	    lock_data:Some("".to_string())
+	    lock_data:Some("0000000".to_string())
 	}	
     }
 }
@@ -217,12 +217,6 @@ impl AwsLockClientDynamoDb {
 	    s:lock.lock_data.map(|o| o.to_string()),
 	    .. Default::default()			
 	};
-
-
-	
-
-
-	
 
 	let mut expression_attribute_values= HashMap::new();
 	
