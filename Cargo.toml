@@ -19,3 +19,7 @@ rusoto_dynamodb={ version="0.43.0-beta.1"}
 rusoto_signature={ version="0.43.0-beta.1"}
 rusoto_core={ version="0.43.0-beta.1"}
 async-trait="*"
+
+
+[[example]]
+name = "simple"
