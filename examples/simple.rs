@@ -12,7 +12,7 @@ use std::env;
 use aws_lock_client::AwsLockClient;
 use aws_lock_client::AwsLockClientDynamoDb;
 
-#[tokio::main(core_threads = 8)]
+#[tokio::main]
 async fn main() {
     env_logger::builder().format_timestamp_nanos().init();
     if let Err(_) = env::var("AWS_ACCESS_KEY_ID"){
@@ -53,7 +53,7 @@ async fn main() {
 	}
     }
 
-    tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
     
 
     let stream_name = "some_stream_name_name";
