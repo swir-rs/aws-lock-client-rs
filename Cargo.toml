@@ -13,9 +13,9 @@ log = "*"
 hostname = "*"
 uuid = { version = "0.8", features = ["serde", "v4"] }
 currenttimemillis = {version ="*", git = "https://github.com/swir-rs/currenttimemillis-rs"}
-rusoto_dynamodb={ version="0.46"}
-rusoto_signature={ version="0.46"}
-rusoto_core={ version="0.46"}
+rusoto_dynamodb={ version="0.47"}
+rusoto_signature={ version="0.47"}
+rusoto_core={ version="0.47"}
 async-trait="*"
 
 [dev-dependencies]
